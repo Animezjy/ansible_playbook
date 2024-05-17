@@ -1,0 +1,165 @@
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"os"
+	"sort"
+	"strings"
+
+	corev1 "k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/fields"
+	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/tools/clientcmd"
+)
+
+// NodeInfo 结构体用于保存每个节点的信息
+type NodeInfo struct {
+	NodeName   string    `json:"nodeName"`
+	GPUTotal   int64     `json:"gpuTotal"`
+	GPUUsed    int64     `json:"gpuUsed"`
+	GPUPodInfo []PodInfo `json:"gpuPodInfo"`
+}
+
+// PodInfo 结构体用于保存每个Pod的信息
+type PodInfo struct {
+	PodName   string `json:"podName"`
+	Namespace string `json:"namespace"`
+	GPUUsed   int64  `json:"gpu_used"`
+}
+
+// ByGPUUsed 定义了按照 GPU 使用量排序的方式
+type ByGPUUsed []NodeInfo
+
+func (a ByGPUUsed) Len() int           { return len(a) }
+func (a ByGPUUsed) Swap(i, j int)      { a[i], a[j] = a[j], a[i] }
+func (a ByGPUUsed) Less(i, j int) bool { return a[i].GPUUsed < a[j].GPUUsed }
+
+func main() {
+	// 获取kubeconfig的路径，通常是$HOME/.kube/config
+	kubeconfigPath := os.Getenv("KUBECONFIG")
+	if kubeconfigPath == "" {
+		kubeconfigPath = os.Getenv("HOME") + "/.kube/config"
+	}
+
+	// 加载kubeconfig文件，建立与Kubernetes集群的连接
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		panic(err.Error())
+	}
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// 列出所有节点
+	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		panic(err.Error())
+	}
+
+	// 创建一个用于保存所有节点信息的切片
+	var nodesInfo []NodeInfo
+
+	// 遍历节点列表
+	for _, node := range nodes.Items {
+		gpuTotal, ok := node.Status.Allocatable[corev1.ResourceName("nvidia.com/gpu")]
+		if !ok {
+			fmt.Printf("节点 %s 上没有可分配的 GPU\n", node.Name)
+			continue
+		}
+
+		gpuUsed, podInfos, err := getGPUUsageForNode(clientset, node.Name)
+		if err != nil {
+			fmt.Printf("获取节点 %s 上的 GPU 使用量时出现错误：%v\n", node.Name, err)
+			continue
+		}
+
+		nodeInfo := NodeInfo{
+			NodeName:   node.Name,
+			GPUTotal:   gpuTotal.Value(),
+			GPUUsed:    gpuUsed,
+			GPUPodInfo: podInfos,
+		}
+
+		nodesInfo = append(nodesInfo, nodeInfo)
+	}
+
+	// 将节点信息切片转换为 JSON 格式并输出
+	nodesInfoJSON, err := json.MarshalIndent(nodesInfo, "", "  ")
+	if err != nil {
+		panic(err.Error())
+	}
+	// fmt.Println(string(nodesInfoJSON))
+	GenerateMarkdownTable(nodesInfoJSON)
+}
+
+// getGPUUsageForNode 获取指定节点上已使用的 GPU 数量及相关 Pod 信息
+func getGPUUsageForNode(clientset *kubernetes.Clientset, nodeName string) (int64, []PodInfo, error) {
+	podList, err := clientset.CoreV1().Pods(metav1.NamespaceAll).List(context.TODO(), metav1.ListOptions{
+		FieldSelector: fields.OneTermEqualSelector("spec.nodeName", nodeName).String(),
+	})
+	if err != nil {
+		return 0, nil, err
+	}
+
+	var gpuUsed int64
+	podInfos := make([]PodInfo, 0) // 初始化切片
+
+	for _, pod := range podList.Items {
+		hasGPURequest := false
+		totalGPUUsedPerPod := int64(0)
+		for _, container := range pod.Spec.Containers {
+			if container.Resources.Requests != nil {
+				if _, found := container.Resources.Requests[corev1.ResourceName("nvidia.com/gpu")]; found {
+					hasGPURequest = true
+					gpuRequests, _ := container.Resources.Requests[corev1.ResourceName("nvidia.com/gpu")]
+					totalGPUUsedPerPod += gpuRequests.Value()
+				}
+			}
+		}
+
+		// 只有当Pod请求了GPU资源时，才统计其GPU使用量和信息
+		if hasGPURequest {
+			podInfo := PodInfo{
+				PodName:   pod.Name,
+				Namespace: pod.Namespace,
+				GPUUsed:   totalGPUUsedPerPod,
+			}
+
+			podInfos = append(podInfos, podInfo)
+			gpuUsed += totalGPUUsedPerPod
+		}
+	}
+
+	return gpuUsed, podInfos, nil
+}
+
+// GenerateMarkdownTable 函数接受JSON数据并生成Markdown表格
+func GenerateMarkdownTable(jsonData []byte) {
+	var nodesInfo []NodeInfo
+
+	// 解析JSON数据
+	err := json.Unmarshal(jsonData, &nodesInfo)
+	if err != nil {
+		panic(err)
+	}
+	// 按照GPU使用量对节点进行排序
+	sort.Sort(ByGPUUsed(nodesInfo))
+
+	// 创建Markdown表格头部
+	fmt.Println("| 节点名称 | GPU总数 | GPU已使用 | GPU使用详情 |")
+	fmt.Println("|----------|--------|----------|------------|")
+
+	// 遍历每个节点，生成Markdown表格行
+	for _, node := range nodesInfo {
+		var details []string
+		for _, pod := range node.GPUPodInfo {
+			details = append(details, fmt.Sprintf("%s (%s) - %d", pod.PodName, pod.Namespace, pod.GPUUsed))
+		}
+		detailsStr := strings.Join(details, "<br />")
+		fmt.Printf("| %s | %d | %d | %s |\n", node.NodeName, node.GPUTotal, node.GPUUsed, detailsStr)
+	}
+}

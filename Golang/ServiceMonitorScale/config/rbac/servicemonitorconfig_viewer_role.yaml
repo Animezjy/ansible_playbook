@@ -1,0 +1,27 @@
+# permissions for end users to view servicemonitorconfigs.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  labels:
+    app.kubernetes.io/name: clusterrole
+    app.kubernetes.io/instance: servicemonitorconfig-viewer-role
+    app.kubernetes.io/component: rbac
+    app.kubernetes.io/created-by: servicemonitorscale
+    app.kubernetes.io/part-of: servicemonitorscale
+    app.kubernetes.io/managed-by: kustomize
+  name: servicemonitorconfig-viewer-role
+rules:
+- apiGroups:
+  - hwl.tal.com
+  resources:
+  - servicemonitorconfigs
+  verbs:
+  - get
+  - list
+  - watch
+- apiGroups:
+  - hwl.tal.com
+  resources:
+  - servicemonitorconfigs/status
+  verbs:
+  - get

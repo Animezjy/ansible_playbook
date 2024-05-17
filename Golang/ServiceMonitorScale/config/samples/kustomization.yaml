@@ -1,0 +1,4 @@
+## Append samples of your project ##
+resources:
+- hwl_v1_servicemonitorconfig.yaml
+#+kubebuilder:scaffold:manifestskustomizesamples

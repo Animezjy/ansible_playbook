@@ -1,0 +1,71 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.14.0
+  name: servicemonitorconfigs.hwl.tal.com
+spec:
+  group: hwl.tal.com
+  names:
+    kind: ServiceMonitorConfig
+    listKind: ServiceMonitorConfigList
+    plural: servicemonitorconfigs
+    singular: servicemonitorconfig
+  scope: Namespaced
+  versions:
+  - name: v1
+    schema:
+      openAPIV3Schema:
+        description: ServiceMonitorConfig is the Schema for the servicemonitorconfigs
+          API
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: ServiceMonitorConfigSpec defines the desired state of ServiceMonitorConfig
+            properties:
+              namespaceSpec:
+                description: |-
+                  NamespaceSelector is a selector for selecting either all namespaces or a
+                  list of namespaces.
+                  If `any` is true, it takes precedence over `matchNames`.
+                  If `matchNames` is empty and `any` is false, it means that the objects are
+                  selected from the current namespace.
+                properties:
+                  any:
+                    description: |-
+                      Boolean describing whether all namespaces are selected in contrast to a
+                      list restricting them.
+                    type: boolean
+                  matchNames:
+                    description: List of namespace names to select from.
+                    items:
+                      type: string
+                    type: array
+                type: object
+            type: object
+          status:
+            description: ServiceMonitorConfigStatus defines the observed state of
+              ServiceMonitorConfig
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

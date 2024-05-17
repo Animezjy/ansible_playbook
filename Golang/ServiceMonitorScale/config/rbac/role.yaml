@@ -1,0 +1,32 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - hwl.tal.com
+  resources:
+  - servicemonitorconfigs
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - hwl.tal.com
+  resources:
+  - servicemonitorconfigs/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - hwl.tal.com
+  resources:
+  - servicemonitorconfigs/status
+  verbs:
+  - get
+  - patch
+  - update

@@ -1,0 +1,28 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: service-controller
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: service-controller
+  template:
+    metadata:
+      labels:
+        app: service-controller
+    spec:
+      containers:
+      - name: service-controller
+        image: hub.tal.com/zhangjiyou/service-controller:v1.9
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 9001
+        env:
+        - name: ServiceNamespaces
+          value: "demo,glm-bp"
+        - name: Interval
+          value: "5s"
+      imagePullSecrets:
+      - name: image-pull
